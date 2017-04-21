@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const videoInfoURL = "http://youtube.com/get_video_info?video_id="
+
 type Video struct {
 	id    string
 	title string
