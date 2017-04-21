@@ -15,28 +15,50 @@ const (
 	videoInfoURL = "http://youtube.com/get_video_info?video_id="
 )
 
-type YouTubeVideo struct {
+type Video struct {
 	id    string
 	title string
 }
 
+type Streams []VideoStream
+
 type VideoStream struct {
-	quality string
+	quality Quality
 	url     string
 	format  string
 }
 
+func NewVideoStream(url, quality, format string) VideoStream {
+	return VideoStream{
+		quality: qualityStringToIotaMap[quality],
+		url:     url,
+		format:  format,
+	}
+}
+
+type Quality uint8
+
+var qualityStringToIotaMap = map[string]Quality{
+	Quality720PString:   Quality720p,
+	QualityMediumString: QualityMedium,
+	QualitySmallString:  QualitySmall,
+}
+
 const (
-	NoPreferedQuality = ""
-	Quality720P       = "hd720"
-	QualityMedium     = "medium"
-	QualitySmall      = "small"
+	QualitySmall Quality = iota
+	QualityMedium
+	Quality720p
+
+	NoPreferedQualityString = ""
+	MaxQualityString        = "max"
+	MinQualityString        = "min"
+	Quality720PString       = "hd720"
+	QualityMediumString     = "medium"
+	QualitySmallString      = "small"
 )
 
-var sortedQualities = []string{Quality720P, QualityMedium, QualitySmall}
-
-func NewYouTubeVideo(id string) *YouTubeVideo {
-	return &YouTubeVideo{id: id}
+func NewVideo(id string) *Video {
+	return &Video{id: id}
 }
 
 func parseVideoIDFromURL(urlString string) (string, error) {
@@ -56,7 +78,7 @@ func parseVideoIDFromURL(urlString string) (string, error) {
 	return params["v"][0], nil
 }
 
-func (y *YouTubeVideo) GetVideoStreams() (streams []VideoStream, err error) {
+func (y *Video) GetVideoStreams() (streams Streams, err error) {
 	infoUrl := videoInfoURL + y.id
 	resp, err := http.Get(infoUrl)
 	if err != nil {
@@ -75,7 +97,7 @@ func (y *YouTubeVideo) GetVideoStreams() (streams []VideoStream, err error) {
 	return parseVideoInfo(body)
 }
 
-func parseVideoInfo(body []byte) (streams []VideoStream, err error) {
+func parseVideoInfo(body []byte) (streams Streams, err error) {
 	parsed, err := url.ParseQuery(string(body))
 	if err != nil {
 		return streams, err
@@ -116,7 +138,7 @@ func streamFromQueryData(streamData map[string][]string) (stream VideoStream, er
 	quality := streamData["quality"][0]
 	format := streamData["type"][0]
 	url := streamData["url"][0]
-	return VideoStream{url: url, quality: quality, format: format}, nil
+	return NewVideoStream(url, quality, format), nil
 }
 
 func ensureFields(data map[string][]string, fields ...string) error {
@@ -128,6 +150,58 @@ func ensureFields(data map[string][]string, fields ...string) error {
 	return nil
 }
 
+func (streams Streams) ChooseStream(quality string) (stream VideoStream, err error) {
+	fmt.Printf("quality = %+v\n", quality)
+	if len(streams) == 0 {
+		return stream, errors.New("Empty streams struct")
+	}
+	switch quality {
+	case NoPreferedQualityString:
+		return streams[0], nil // choose arbitrarily
+	case MaxQualityString:
+		return streams.findMaxStream(), nil
+	case MinQualityString:
+		return streams.findMinStream(), nil
+	default: // Search by name
+		return streams.findByQuality(quality)
+	}
+}
+
+func (streams Streams) findByQuality(qualityString string) (VideoStream, error) {
+	quality, exists := qualityStringToIotaMap[qualityString]
+	if !exists {
+		errString := fmt.Sprintf("%s quality isn't a defined quality", qualityString)
+		return VideoStream{}, errors.New(errString)
+	}
+	for _, stream := range streams {
+		if stream.quality == quality {
+			return stream, nil
+		}
+	}
+	errString := fmt.Sprintf("No Matching Stream for %s quality", qualityString)
+	return VideoStream{}, errors.New(errString)
+}
+
+func (streams Streams) findMinStream() VideoStream {
+	var min VideoStream
+	for i, stream := range streams {
+		if i == 0 || stream.quality < min.quality {
+			min = stream
+		}
+	}
+	return min
+}
+
+func (streams Streams) findMaxStream() VideoStream {
+	var max VideoStream
+	for i, stream := range streams {
+		if i == 0 || stream.quality > max.quality {
+			max = stream
+		}
+	}
+	return max
+}
+
 const (
 	quality_usage = `(optional) quality of video. e.g. "medium". "max" or "min" will select the highest or lowest availible quality.`
 )
@@ -135,17 +209,19 @@ const (
 func main() {
 	// playlist := "https://www.youtube.com/playlist?list=PL6MuV0DF6AurABItm5OzSdVrEgJ_DxWVD"
 	// videos, _ := getPlaylist(playlist)
-	// quality := flag.String("q", NoPreferedQuality, quality_usage)
+	quality := flag.String("q", NoPreferedQualityString, quality_usage)
 	flag.Parse()
 	checkUsage()
 	url := flag.Arg(0)
 	id, _ := parseVideoIDFromURL(url)
-	v := NewYouTubeVideo(id)
+	v := NewVideo(id)
 	streams, _ := v.GetVideoStreams()
 	for _, s := range streams {
 		fmt.Printf("s = %+v\n", s)
 		fmt.Println("")
 	}
+	stream, _ := streams.ChooseStream(*quality)
+	fmt.Printf("stream = %+v\n", stream)
 }
 
 func checkUsage() {
