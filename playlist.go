@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -23,10 +24,9 @@ func getPlaylist(url string) (playlist Playlist, err error) {
 		return playlist, err
 	}
 
-	playlist.title = doc.Find(PlaylistTitle).Text()
-	fmt.Printf("playlist.title = %+v\n", playlist.title)
+	playlist.title = strings.TrimSpace(doc.Find(PlaylistTitle).Text())
 	doc.Find(VideoTitle).Each(func(i int, titleLink *goquery.Selection) {
-		videoTitle := titleLink.Text()
+		videoTitle := strings.TrimSpace(titleLink.Text())
 		link, exists := titleLink.Attr("href")
 		if exists {
 			id, err := parseVideoIDFromURL(link)
@@ -34,7 +34,7 @@ func getPlaylist(url string) (playlist Playlist, err error) {
 				video := &Video{title: videoTitle, id: id}
 				playlist.videos = append(playlist.videos, video)
 			} else {
-				fmt.Printf("Error parsing: %s", link)
+				fmt.Printf("Error parsing: %s\n", link)
 			}
 		}
 	})

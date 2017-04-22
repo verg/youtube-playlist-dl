@@ -3,10 +3,15 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/kennygrant/sanitize"
 )
 
 const videoInfoURL = "http://youtube.com/get_video_info?video_id="
@@ -18,6 +23,34 @@ type Video struct {
 
 func NewVideo(id string) *Video {
 	return &Video{id: id}
+}
+
+func (video *Video) Download(stream VideoStream, path string) error {
+	filename := video.title + "." + stream.extention()
+	path = sanitize.Path(filepath.Join(path, filename))
+	fmt.Printf("Downloading: %s\n", video.title)
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	resp, err := http.Get(stream.url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		errStr := fmt.Sprintf("Got response code: %d for %s", resp.StatusCode, video.title)
+		return errors.New(errStr)
+	}
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (video *Video) GetVideoStreams() (streams Streams, err error) {
@@ -58,7 +91,7 @@ func parseVideoInfo(body []byte) (streams Streams, err error) {
 	for i, streamData := range streamsData {
 		query, err := url.ParseQuery(streamData)
 		if err != nil {
-			fmt.Printf("Error decoding stream: %d, %s", i, err)
+			fmt.Printf("Error decoding stream: %d, %s\n", i, err)
 			continue
 		}
 
@@ -74,7 +107,7 @@ func parseVideoInfo(body []byte) (streams Streams, err error) {
 func streamFromQueryData(streamData map[string][]string) (stream VideoStream, err error) {
 	err = ensureFields(streamData, "quality", "type", "url")
 	if err != nil {
-		fmt.Printf("Error decoding stream: %s", err)
+		fmt.Printf("Error decoding stream: %s\n", err)
 		return stream, err
 	}
 	quality := streamData["quality"][0]

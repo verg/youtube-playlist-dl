@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type Streams []VideoStream
@@ -42,10 +43,11 @@ const (
 	QualitySmallString      = "small"
 )
 
-func (streams Streams) ChooseStream(quality string) (stream VideoStream, err error) {
+func (streams Streams) ChooseStream(preferences Preferences) (stream VideoStream, err error) {
 	if len(streams) == 0 {
 		return stream, errors.New("Empty streams struct")
 	}
+	quality := preferences.quality
 	switch quality {
 	case NoPreferedQualityString:
 		return streams[0], nil // choose arbitrarily
@@ -91,4 +93,13 @@ func (streams Streams) findMaxStream() VideoStream {
 		}
 	}
 	return max
+}
+
+func (stream VideoStream) extention() string {
+	slash := strings.Index(stream.format, `/`)
+	ext := stream.format[slash+1:]
+	if semiColon := strings.Index(ext, `;`); semiColon >= 0 {
+		ext = ext[:semiColon]
+	}
+	return ext
 }
